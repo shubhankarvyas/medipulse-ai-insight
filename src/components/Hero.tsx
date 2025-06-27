@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Play, Heart, Activity, Brain } from "lucide-react";
+import { ArrowRight, Play, Heart, Activity, Brain, Zap } from "lucide-react";
 
 export const Hero = () => {
   return (
