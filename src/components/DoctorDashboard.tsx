@@ -70,9 +70,12 @@ export const DoctorDashboard = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "attention": return "bg-red-100 text-red-700 border-red-200";
-      case "improving": return "bg-blue-100 text-blue-700 border-blue-200";
-      default: return "bg-green-100 text-green-700 border-green-200";
+      case "attention": 
+        return "bg-red-100 text-red-700 border-red-200";
+      case "improving": 
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      default: 
+        return "bg-green-100 text-green-700 border-green-200";
     }
   };
 
