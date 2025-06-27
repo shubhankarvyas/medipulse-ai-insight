@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,30 +14,37 @@ import { SecureMRIUpload } from "@/components/SecureMRIUpload";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
-  const { user, userProfile, signOut } = useAuth();
+  const { user, userProfile, signOut, loading } = useAuth();
   const [activeView, setActiveView] = useState("home");
 
   const handleSignOut = async () => {
     await signOut();
   };
 
-  const renderContent = () => {
-    if (!userProfile) {
-      return (
-        <div className="flex items-center justify-center min-h-64">
-          <div className="animate-pulse text-center">
-            <div className="w-8 h-8 bg-gray-200 rounded-full mx-auto mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
-          </div>
+  // Show loading spinner while auth is loading
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <div className="animate-pulse text-center">
+          <div className="w-8 h-8 bg-gray-200 rounded-full mx-auto mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
+  // If no user, redirect to auth
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  const renderContent = () => {
     switch (activeView) {
       case "patient":
-        return userProfile.role === 'patient' ? <PatientDashboard /> : <div>Access denied</div>;
+        return userProfile?.role === 'patient' ? <PatientDashboard /> : <div>Access denied</div>;
       case "doctor":
-        return userProfile.role === 'doctor' ? <DoctorDashboard /> : <div>Access denied</div>;
+        return userProfile?.role === 'doctor' ? <DoctorDashboard /> : <div>Access denied</div>;
       case "ai-chat":
         return <AIChat />;
       case "ecg-monitor":

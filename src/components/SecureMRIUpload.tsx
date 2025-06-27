@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,10 +18,14 @@ interface MRIScan {
   file_path: string;
   scan_type: string;
   scan_date: string;
-  ai_analysis_result: any;
+  ai_analysis_result: Record<string, unknown>;
   ai_confidence_score: number;
   status: 'pending' | 'analyzed' | 'reviewed';
   created_at: string;
+  patient_id?: string;
+  doctor_notes?: string;
+  file_size: number;
+  uploaded_by: string;
 }
 
 export const SecureMRIUpload = () => {
@@ -100,12 +103,31 @@ export const SecureMRIUpload = () => {
       setUploadProgress(50);
 
       // Get patient ID
-      const patientId = userProfile.role === 'patient' 
-        ? userProfile.patients?.[0]?.id 
-        : null;
+      let patientId = null;
+      if (userProfile.role === 'patient') {
+        const { data: patientData, error: patientError } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
 
-      if (!patientId && userProfile.role === 'patient') {
-        throw new Error('Patient profile not found');
+        if (patientError || !patientData) {
+          // If patient record doesn't exist, create one
+          const { data: newPatient, error: createError } = await supabase
+            .from('patients')
+            .insert({
+              user_id: user.id,
+            })
+            .select('id')
+            .single();
+
+          if (createError) {
+            throw new Error('Failed to create patient profile');
+          }
+          patientId = newPatient.id;
+        } else {
+          patientId = patientData.id;
+        }
       }
 
       // Save scan metadata to database
@@ -140,11 +162,11 @@ export const SecureMRIUpload = () => {
       // Refresh scans list
       fetchScans();
 
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error('Upload error:', error);
       toast({
         title: 'Upload Failed',
-        description: error.message || 'Failed to upload MRI scan.',
+        description: error instanceof Error ? error.message : 'Failed to upload MRI scan.',
         variant: 'destructive'
       });
     } finally {
@@ -153,7 +175,7 @@ export const SecureMRIUpload = () => {
     }
   };
 
-  const fetchScans = async () => {
+  const fetchScans = React.useCallback(async () => {
     if (!userProfile) return;
 
     const { data, error } = await supabase
@@ -167,14 +189,14 @@ export const SecureMRIUpload = () => {
       return;
     }
 
-    setScans(data || []);
-  };
+    setScans(data as MRIScan[]);
+  }, [userProfile, user?.id]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (userProfile) {
       fetchScans();
     }
-  }, [userProfile]);
+  }, [userProfile, fetchScans]);
 
   if (!user) {
     return (

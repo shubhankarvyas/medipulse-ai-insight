@@ -1,4 +1,3 @@
-
 -- Create user profiles table
 CREATE TABLE public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -125,6 +124,25 @@ CREATE POLICY "Doctors can update their assigned patients" ON public.patients
     ) AND assigned_doctor_id = auth.uid()
   );
 
+-- Add RLS policies for patients table
+CREATE POLICY "Patients can view own records" ON public.patients
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Patients can update own records" ON public.patients
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Patients can insert own records" ON public.patients
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Doctors can view all patients" ON public.patients
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() 
+            AND role = 'doctor'
+        )
+    );
+
 -- RLS Policies for doctors
 CREATE POLICY "Doctors can view their own data" ON public.doctors
   FOR SELECT USING (auth.uid() = user_id);
@@ -168,12 +186,13 @@ CREATE POLICY "Allow ECG data insertion from devices" ON public.ecg_readings
   FOR INSERT WITH CHECK (true); -- This will be secured by API key in edge function
 
 -- RLS Policies for MRI scans
-CREATE POLICY "Patients can view their own MRI scans" ON public.mri_scans
-  FOR SELECT USING (
-    patient_id IN (
-      SELECT id FROM public.patients WHERE user_id = auth.uid()
-    )
-  );
+CREATE POLICY "Users can view own MRI scans" ON public.mri_scans
+    FOR SELECT USING (
+        uploaded_by = auth.uid() OR
+        patient_id IN (
+            SELECT id FROM public.patients WHERE user_id = auth.uid()
+        )
+    );
 
 CREATE POLICY "Doctors can view their patients' MRI scans" ON public.mri_scans
   FOR SELECT USING (
@@ -183,24 +202,26 @@ CREATE POLICY "Doctors can view their patients' MRI scans" ON public.mri_scans
     )
   );
 
-CREATE POLICY "Only authenticated users can upload MRI scans" ON public.mri_scans
-  FOR INSERT WITH CHECK (auth.uid() = uploaded_by);
+CREATE POLICY "Users can upload own MRI scans" ON public.mri_scans
+    FOR INSERT WITH CHECK (auth.uid() = uploaded_by);
 
 CREATE POLICY "Users can update their uploaded MRI scans" ON public.mri_scans
   FOR UPDATE USING (auth.uid() = uploaded_by);
 
 -- Storage policies for MRI scans
-CREATE POLICY "Authenticated users can upload MRI scans" ON storage.objects
-  FOR INSERT WITH CHECK (
+CREATE POLICY "Users can upload own MRI scans"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
     bucket_id = 'mri-scans' AND 
-    auth.uid() IS NOT NULL
-  );
+    (auth.uid()::text = (string_to_array(name, '/'))[1])
+);
 
-CREATE POLICY "Users can view MRI scans they have access to" ON storage.objects
-  FOR SELECT USING (
+CREATE POLICY "Users can view own MRI scans"
+ON storage.objects FOR SELECT TO authenticated
+USING (
     bucket_id = 'mri-scans' AND (
-      -- Patient can view their own scans
-      name LIKE '%/' || auth.uid()::text || '/%' OR
+      -- User can view their own scans
+      (auth.uid()::text = (string_to_array(name, '/'))[1]) OR
       -- Doctor can view their patients' scans
       EXISTS (
         SELECT 1 FROM public.mri_scans ms
@@ -208,7 +229,7 @@ CREATE POLICY "Users can view MRI scans they have access to" ON storage.objects
         WHERE ms.file_path = name AND p.assigned_doctor_id = auth.uid()
       )
     )
-  );
+);
 
 -- Function to handle new user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -228,10 +249,12 @@ BEGIN
     VALUES (
       NEW.id,
       NEW.raw_user_meta_data->>'phone_number',
-      NEW.raw_user_meta_data->>'gender',
-      CASE WHEN NEW.raw_user_meta_data->>'date_of_birth' IS NOT NULL 
-           THEN (NEW.raw_user_meta_data->>'date_of_birth')::date 
-           ELSE NULL END
+      NULLIF(NEW.raw_user_meta_data->>'gender', ''), -- Treat empty string as NULL
+      CASE 
+        WHEN NEW.raw_user_meta_data->>'date_of_birth' IS NOT NULL AND NEW.raw_user_meta_data->>'date_of_birth' <> ''
+        THEN (NEW.raw_user_meta_data->>'date_of_birth')::date 
+        ELSE NULL 
+      END
     );
   END IF;
   

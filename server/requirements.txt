@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-dotenv
+httpx
+supabase
+pydantic
+python-multipart
+reportlab
+torch
+transformers
+Pillow

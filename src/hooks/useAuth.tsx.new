@@ -2,35 +2,12 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-// Define the shape of our user profile
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  role: 'doctor' | 'patient';
-  patients?: any[];
-  created_at: string;
-  updated_at: string;
-}
-
-interface UserData {
-  full_name: string;
-  role: 'doctor' | 'patient';
-  phone_number?: string;
-  date_of_birth?: string;
-  gender?: string;
-  license_number?: string;
-  specialization?: string;
-  years_of_experience?: string;
-}
-
 interface AuthContextType {
   user: User | null;
   session: Session | null;
-  userProfile: UserProfile | null;
+  userProfile: any | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, userData: UserData) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
 }
 
@@ -39,7 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,30 +59,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Profile doesn't exist, create one
           const { data: newProfile, error: createError } = await supabase
             .from('profiles')
-            .insert([{ 
-              id: userId, 
-              email: user?.email || '',
-              role: 'patient',
-              full_name: ''
-            }])
+            .insert([{ id: userId, email: user?.email, role: 'patient' }])
             .select()
             .single();
 
-          if (createError) {
-            console.error('Error creating profile:', createError);
-            // If we can't create a profile, just set loading to false and continue
-            setLoading(false);
-            return;
-          }
-          setUserProfile(newProfile as UserProfile);
+          if (createError) throw createError;
+          setUserProfile(newProfile);
         } else {
-          console.error('Error fetching profile:', error);
-          // For other errors, also just continue without a profile
-          setLoading(false);
-          return;
+          throw error;
         }
       } else {
-        setUserProfile(data as UserProfile);
+        setUserProfile(data);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -126,40 +90,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signUp = async (email: string, password: string, userData: UserData) => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: userData
-        }
-      });
-      
-      if (error) return { error };
-      
-      // If signup is successful, create a profile entry
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([{ 
-            id: data.user.id, 
-            email: email,
-            ...userData
-          }]);
-        
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          return { error: profileError };
-        }
-      }
-      
-      return { error: null };
-    } catch (error) {
-      return { error };
-    }
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -175,7 +105,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         userProfile,
         loading,
         signIn,
-        signUp,
         signOut,
       }}
     >
