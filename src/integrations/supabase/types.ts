@@ -9,7 +9,304 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      doctors: {
+        Row: {
+          created_at: string | null
+          hospital_affiliation: string | null
+          id: string
+          license_number: string | null
+          phone_number: string | null
+          specialization: string | null
+          updated_at: string | null
+          user_id: string
+          years_of_experience: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          hospital_affiliation?: string | null
+          id?: string
+          license_number?: string | null
+          phone_number?: string | null
+          specialization?: string | null
+          updated_at?: string | null
+          user_id: string
+          years_of_experience?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          hospital_affiliation?: string | null
+          id?: string
+          license_number?: string | null
+          phone_number?: string | null
+          specialization?: string | null
+          updated_at?: string | null
+          user_id?: string
+          years_of_experience?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doctors_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecg_devices: {
+        Row: {
+          battery_level: number | null
+          created_at: string | null
+          device_id: string
+          device_name: string | null
+          firmware_version: string | null
+          id: string
+          is_active: boolean | null
+          last_sync: string | null
+          patient_id: string
+        }
+        Insert: {
+          battery_level?: number | null
+          created_at?: string | null
+          device_id: string
+          device_name?: string | null
+          firmware_version?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync?: string | null
+          patient_id: string
+        }
+        Update: {
+          battery_level?: number | null
+          created_at?: string | null
+          device_id?: string
+          device_name?: string | null
+          firmware_version?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync?: string | null
+          patient_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecg_devices_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ecg_readings: {
+        Row: {
+          activity_level: string | null
+          anomaly_detected: boolean | null
+          anomaly_type: string | null
+          battery_level: number | null
+          created_at: string | null
+          device_id: string
+          ecg_data: Json
+          heart_rate: number
+          id: string
+          patient_id: string
+          signal_quality: number | null
+          temperature: number | null
+          timestamp: string
+        }
+        Insert: {
+          activity_level?: string | null
+          anomaly_detected?: boolean | null
+          anomaly_type?: string | null
+          battery_level?: number | null
+          created_at?: string | null
+          device_id: string
+          ecg_data: Json
+          heart_rate: number
+          id?: string
+          patient_id: string
+          signal_quality?: number | null
+          temperature?: number | null
+          timestamp: string
+        }
+        Update: {
+          activity_level?: string | null
+          anomaly_detected?: boolean | null
+          anomaly_type?: string | null
+          battery_level?: number | null
+          created_at?: string | null
+          device_id?: string
+          ecg_data?: Json
+          heart_rate?: number
+          id?: string
+          patient_id?: string
+          signal_quality?: number | null
+          temperature?: number | null
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ecg_readings_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "ecg_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ecg_readings_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mri_scans: {
+        Row: {
+          ai_analysis_result: Json | null
+          ai_confidence_score: number | null
+          created_at: string | null
+          doctor_notes: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          patient_id: string
+          scan_date: string | null
+          scan_type: string | null
+          status: string | null
+          updated_at: string | null
+          uploaded_by: string
+        }
+        Insert: {
+          ai_analysis_result?: Json | null
+          ai_confidence_score?: number | null
+          created_at?: string | null
+          doctor_notes?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          patient_id: string
+          scan_date?: string | null
+          scan_type?: string | null
+          status?: string | null
+          updated_at?: string | null
+          uploaded_by: string
+        }
+        Update: {
+          ai_analysis_result?: Json | null
+          ai_confidence_score?: number | null
+          created_at?: string | null
+          doctor_notes?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          patient_id?: string
+          scan_date?: string | null
+          scan_type?: string | null
+          status?: string | null
+          updated_at?: string | null
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mri_scans_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mri_scans_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patients: {
+        Row: {
+          address: string | null
+          assigned_doctor_id: string | null
+          created_at: string | null
+          date_of_birth: string | null
+          gender: string | null
+          id: string
+          medical_history: string | null
+          phone_number: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          assigned_doctor_id?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          gender?: string | null
+          id?: string
+          medical_history?: string | null
+          phone_number?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          assigned_doctor_id?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          gender?: string | null
+          id?: string
+          medical_history?: string | null
+          phone_number?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patients_assigned_doctor_id_fkey"
+            columns: ["assigned_doctor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+          role: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

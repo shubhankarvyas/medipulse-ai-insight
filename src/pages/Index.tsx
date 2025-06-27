@@ -2,28 +2,47 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Activity, Brain, MessageSquare, FileText, Shield, Zap, Users } from "lucide-react";
+import { Heart, Activity, Brain, MessageSquare, FileText, Shield, Zap, Users, LogOut } from "lucide-react";
 import { Hero } from "@/components/Hero";
 import { PatientDashboard } from "@/components/PatientDashboard";
 import { DoctorDashboard } from "@/components/DoctorDashboard";
 import { AIChat } from "@/components/AIChat";
-import { MRIUpload } from "@/components/MRIUpload";
+import { RealTimeECG } from "@/components/RealTimeECG";
+import { SecureMRIUpload } from "@/components/SecureMRIUpload";
+import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
+  const { user, userProfile, signOut } = useAuth();
   const [activeView, setActiveView] = useState("home");
 
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
   const renderContent = () => {
+    if (!userProfile) {
+      return (
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-pulse text-center">
+            <div className="w-8 h-8 bg-gray-200 rounded-full mx-auto mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeView) {
       case "patient":
-        return <PatientDashboard />;
+        return userProfile.role === 'patient' ? <PatientDashboard /> : <div>Access denied</div>;
       case "doctor":
-        return <DoctorDashboard />;
+        return userProfile.role === 'doctor' ? <DoctorDashboard /> : <div>Access denied</div>;
       case "ai-chat":
         return <AIChat />;
+      case "ecg-monitor":
+        return <RealTimeECG />;
       case "mri-upload":
-        return <MRIUpload />;
+        return <SecureMRIUpload />;
       default:
         return (
           <div className="space-y-16">
@@ -59,22 +78,39 @@ const Index = () => {
               >
                 Home
               </button>
-              <button
-                onClick={() => setActiveView("patient")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeView === "patient" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
-                }`}
-              >
-                Patient Dashboard
-              </button>
-              <button
-                onClick={() => setActiveView("doctor")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeView === "doctor" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
-                }`}
-              >
-                Doctor Dashboard
-              </button>
+              
+              {userProfile?.role === 'patient' && (
+                <>
+                  <button
+                    onClick={() => setActiveView("patient")}
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeView === "patient" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
+                    }`}
+                  >
+                    My Dashboard
+                  </button>
+                  <button
+                    onClick={() => setActiveView("ecg-monitor")}
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeView === "ecg-monitor" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
+                    }`}
+                  >
+                    ECG Monitor
+                  </button>
+                </>
+              )}
+              
+              {userProfile?.role === 'doctor' && (
+                <button
+                  onClick={() => setActiveView("doctor")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeView === "doctor" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
+                  }`}
+                >
+                  Doctor Dashboard
+                </button>
+              )}
+              
               <button
                 onClick={() => setActiveView("ai-chat")}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -93,10 +129,20 @@ const Index = () => {
               </button>
             </div>
 
-            <div className="flex space-x-2">
-              <Button variant="outline" size="sm">Login</Button>
-              <Button size="sm" className="bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700">
-                Sign Up
+            <div className="flex items-center space-x-4">
+              {userProfile && (
+                <div className="flex items-center space-x-2">
+                  <Badge variant="secondary" className="capitalize">
+                    {userProfile.role}
+                  </Badge>
+                  <span className="text-sm text-gray-600">
+                    {userProfile.full_name || user?.email}
+                  </span>
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
               </Button>
             </div>
           </div>

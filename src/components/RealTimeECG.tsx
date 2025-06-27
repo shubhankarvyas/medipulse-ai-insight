@@ -1,0 +1,337 @@
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Activity, Wifi, WifiOff, Battery, AlertTriangle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+
+interface ECGReading {
+  id: string;
+  timestamp: string;
+  heart_rate: number;
+  ecg_data: any;
+  signal_quality: number;
+  battery_level: number;
+  temperature: number;
+  anomaly_detected: boolean;
+  anomaly_type: string | null;
+}
+
+interface ECGDevice {
+  id: string;
+  device_id: string;
+  device_name: string;
+  is_active: boolean;
+  last_sync: string;
+  battery_level: number;
+}
+
+export const RealTimeECG = () => {
+  const { userProfile } = useAuth();
+  const { toast } = useToast();
+  const [devices, setDevices] = useState<ECGDevice[]>([]);
+  const [currentReading, setCurrentReading] = useState<ECGReading | null>(null);
+  const [recentReadings, setRecentReadings] = useState<ECGReading[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userProfile) return;
+
+    const fetchDevices = async () => {
+      const { data, error } = await supabase
+        .from('ecg_devices')
+        .select('*')
+        .eq('patient_id', userProfile.patients?.[0]?.id)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('Error fetching devices:', error);
+        return;
+      }
+
+      setDevices(data || []);
+      setLoading(false);
+    };
+
+    const fetchRecentReadings = async () => {
+      const { data, error } = await supabase
+        .from('ecg_readings')
+        .select('*')
+        .eq('patient_id', userProfile.patients?.[0]?.id)
+        .order('timestamp', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error fetching readings:', error);
+        return;
+      }
+
+      setRecentReadings(data || []);
+      if (data && data.length > 0) {
+        setCurrentReading(data[0]);
+        setIsConnected(true);
+      }
+    };
+
+    fetchDevices();
+    fetchRecentReadings();
+
+    // Set up real-time subscription for ECG readings
+    const channel = supabase
+      .channel('ecg_readings')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ecg_readings',
+          filter: `patient_id=eq.${userProfile.patients?.[0]?.id}`
+        },
+        (payload) => {
+          console.log('New ECG reading:', payload);
+          const newReading = payload.new as ECGReading;
+          setCurrentReading(newReading);
+          setRecentReadings(prev => [newReading, ...prev.slice(0, 9)]);
+          setIsConnected(true);
+
+          // Show alert for anomalies
+          if (newReading.anomaly_detected) {
+            toast({
+              title: 'Anomaly Detected!',
+              description: `${newReading.anomaly_type} detected in your ECG reading.`,
+              variant: 'destructive'
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userProfile, toast]);
+
+  const getHeartRateStatus = (heartRate: number) => {
+    if (heartRate < 60) return { status: 'low', color: 'bg-blue-100 text-blue-700' };
+    if (heartRate > 100) return { status: 'high', color: 'bg-red-100 text-red-700' };
+    return { status: 'normal', color: 'bg-green-100 text-green-700' };
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Activity className="w-5 h-5 mr-2" />
+            Loading ECG Data...
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-32 bg-gray-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (devices.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Activity className="w-5 h-5 mr-2" />
+            ECG Monitoring
+          </CardTitle>
+          <CardDescription>No ECG devices found</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <WifiOff className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600 mb-4">No ECG devices are currently registered to your account.</p>
+            <p className="text-sm text-gray-500">
+              Connect your ESP32 ECG device to start monitoring your heart rhythm.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Device Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Activity className="w-5 h-5 mr-2" />
+              ECG Device Status
+            </div>
+            <Badge variant={isConnected ? "default" : "destructive"}>
+              {isConnected ? (
+                <><Wifi className="w-3 h-3 mr-1" /> Connected</>
+              ) : (
+                <><WifiOff className="w-3 h-3 mr-1" /> Disconnected</>
+              )}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {devices.map((device) => (
+              <div key={device.id} className="p-4 border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium">{device.device_name || `Device ${device.device_id}`}</h4>
+                  <Badge variant={device.is_active ? "default" : "secondary"}>
+                    {device.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center justify-between">
+                    <span>Device ID:</span>
+                    <span className="font-mono">{device.device_id}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Battery:</span>
+                    <div className="flex items-center">
+                      <Battery className="w-3 h-3 mr-1" />
+                      <span>{device.battery_level || 0}%</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Last Sync:</span>
+                    <span>
+                      {device.last_sync 
+                        ? new Date(device.last_sync).toLocaleTimeString()
+                        : 'Never'
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Current Reading */}
+      {currentReading && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Activity className="w-5 h-5 mr-2 text-red-500" />
+                Current Heart Rate
+              </div>
+              {currentReading.anomaly_detected && (
+                <Badge variant="destructive">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  Anomaly Detected
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="text-4xl font-bold text-red-600 mb-2">
+                  {currentReading.heart_rate} BPM
+                </div>
+                <Badge className={getHeartRateStatus(currentReading.heart_rate).color}>
+                  {getHeartRateStatus(currentReading.heart_rate).status.toUpperCase()}
+                </Badge>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Signal Quality:</span>
+                  <span className="font-medium">{currentReading.signal_quality}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Temperature:</span>
+                  <span className="font-medium">{currentReading.temperature}°C</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Timestamp:</span>
+                  <span className="font-medium">
+                    {new Date(currentReading.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {currentReading.anomaly_detected && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded">
+                    <div className="flex items-center text-red-700 font-medium mb-1">
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      Anomaly Detected
+                    </div>
+                    <p className="text-sm text-red-600">
+                      {currentReading.anomaly_type}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* ECG Waveform Placeholder */}
+            <div className="mt-6 h-32 bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg flex items-center justify-center border">
+              <div className="flex items-center space-x-2">
+                <Activity className="w-6 h-6 text-blue-500 animate-pulse" />
+                <span className="text-blue-600 font-medium">Live ECG Waveform</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Readings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent ECG Readings</CardTitle>
+          <CardDescription>Your heart rate data over the past readings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {recentReadings.map((reading, index) => (
+              <div key={reading.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="text-sm text-gray-600">
+                    {new Date(reading.timestamp).toLocaleTimeString()}
+                  </div>
+                  <div className="font-semibold">{reading.heart_rate} BPM</div>
+                  <div className="text-sm text-gray-500">
+                    Quality: {reading.signal_quality}%
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {reading.anomaly_detected && (
+                    <Badge variant="destructive" className="text-xs">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      {reading.anomaly_type}
+                    </Badge>
+                  )}
+                  <Badge className={getHeartRateStatus(reading.heart_rate).color}>
+                    {getHeartRateStatus(reading.heart_rate).status}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {recentReadings.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No ECG readings available yet.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
