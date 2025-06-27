@@ -12,7 +12,7 @@ interface ECGReading {
   id: string;
   timestamp: string;
   heart_rate: number;
-  ecg_data: any;
+  ecg_data: number[] | null;
   signal_quality: number;
   battery_level: number;
   temperature: number;
@@ -30,22 +30,48 @@ interface ECGDevice {
 }
 
 export const RealTimeECG = () => {
-  const { userProfile } = useAuth();
+  const { userProfile, user } = useAuth();
   const { toast } = useToast();
   const [devices, setDevices] = useState<ECGDevice[]>([]);
   const [currentReading, setCurrentReading] = useState<ECGReading | null>(null);
   const [recentReadings, setRecentReadings] = useState<ECGReading[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [patientId, setPatientId] = useState<string | null>(null);
+
+  // Get patient ID first
+  useEffect(() => {
+    const getPatientId = async () => {
+      if (!user || !userProfile) return;
+      
+      if (userProfile.role === 'patient') {
+        // For patients, get their patient record
+        const { data, error } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (data && !error) {
+          setPatientId(data.id);
+        }
+      } else {
+        // For doctors, we'll need to handle differently or show all patients
+        setPatientId(null);
+      }
+    };
+
+    getPatientId();
+  }, [user, userProfile]);
 
   useEffect(() => {
-    if (!userProfile) return;
+    if (!userProfile || !patientId) return;
 
     const fetchDevices = async () => {
       const { data, error } = await supabase
         .from('ecg_devices')
         .select('*')
-        .eq('patient_id', userProfile.patients?.[0]?.id)
+        .eq('patient_id', patientId)
         .eq('is_active', true);
 
       if (error) {
@@ -61,7 +87,7 @@ export const RealTimeECG = () => {
       const { data, error } = await supabase
         .from('ecg_readings')
         .select('*')
-        .eq('patient_id', userProfile.patients?.[0]?.id)
+        .eq('patient_id', patientId)
         .order('timestamp', { ascending: false })
         .limit(10);
 
@@ -70,9 +96,9 @@ export const RealTimeECG = () => {
         return;
       }
 
-      setRecentReadings(data || []);
+      setRecentReadings(data as ECGReading[] || []);
       if (data && data.length > 0) {
-        setCurrentReading(data[0]);
+        setCurrentReading(data[0] as ECGReading);
         setIsConnected(true);
       }
     };
@@ -89,7 +115,7 @@ export const RealTimeECG = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'ecg_readings',
-          filter: `patient_id=eq.${userProfile.patients?.[0]?.id}`
+          filter: `patient_id=eq.${patientId}`
         },
         (payload) => {
           console.log('New ECG reading:', payload);
@@ -113,7 +139,7 @@ export const RealTimeECG = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userProfile, toast]);
+  }, [userProfile, toast, patientId]);
 
   const getHeartRateStatus = (heartRate: number) => {
     if (heartRate < 60) return { status: 'low', color: 'bg-blue-100 text-blue-700' };

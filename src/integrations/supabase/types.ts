@@ -7,12 +7,96 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      appointments: {
+        Row: {
+          appointment_date: string
+          created_at: string | null
+          doctor_id: string
+          ecg_report_shared: boolean | null
+          id: string
+          mri_report_shared: boolean | null
+          notes: string | null
+          patient_id: string
+          patient_notes: string | null
+          shared_mri_scans: string[] | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          appointment_date: string
+          created_at?: string | null
+          doctor_id: string
+          ecg_report_shared?: boolean | null
+          id?: string
+          mri_report_shared?: boolean | null
+          notes?: string | null
+          patient_id: string
+          patient_notes?: string | null
+          shared_mri_scans?: string[] | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          appointment_date?: string
+          created_at?: string | null
+          doctor_id?: string
+          ecg_report_shared?: boolean | null
+          id?: string
+          mri_report_shared?: boolean | null
+          notes?: string | null
+          patient_id?: string
+          patient_notes?: string | null
+          shared_mri_scans?: string[] | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       doctors: {
         Row: {
           created_at: string | null
-          hospital_affiliation: string | null
           id: string
           license_number: string | null
           phone_number: string | null
@@ -23,7 +107,6 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          hospital_affiliation?: string | null
           id?: string
           license_number?: string | null
           phone_number?: string | null
@@ -34,7 +117,6 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          hospital_affiliation?: string | null
           id?: string
           license_number?: string | null
           phone_number?: string | null
@@ -59,7 +141,6 @@ export type Database = {
           created_at: string | null
           device_id: string
           device_name: string | null
-          firmware_version: string | null
           id: string
           is_active: boolean | null
           last_sync: string | null
@@ -70,7 +151,6 @@ export type Database = {
           created_at?: string | null
           device_id: string
           device_name?: string | null
-          firmware_version?: string | null
           id?: string
           is_active?: boolean | null
           last_sync?: string | null
@@ -81,7 +161,6 @@ export type Database = {
           created_at?: string | null
           device_id?: string
           device_name?: string | null
-          firmware_version?: string | null
           id?: string
           is_active?: boolean | null
           last_sync?: string | null
@@ -99,47 +178,29 @@ export type Database = {
       }
       ecg_readings: {
         Row: {
-          activity_level: string | null
-          anomaly_detected: boolean | null
-          anomaly_type: string | null
-          battery_level: number | null
           created_at: string | null
           device_id: string
-          ecg_data: Json
           heart_rate: number
           id: string
           patient_id: string
-          signal_quality: number | null
           temperature: number | null
           timestamp: string
         }
         Insert: {
-          activity_level?: string | null
-          anomaly_detected?: boolean | null
-          anomaly_type?: string | null
-          battery_level?: number | null
           created_at?: string | null
           device_id: string
-          ecg_data: Json
           heart_rate: number
           id?: string
           patient_id: string
-          signal_quality?: number | null
           temperature?: number | null
           timestamp: string
         }
         Update: {
-          activity_level?: string | null
-          anomaly_detected?: boolean | null
-          anomaly_type?: string | null
-          battery_level?: number | null
           created_at?: string | null
           device_id?: string
-          ecg_data?: Json
           heart_rate?: number
           id?: string
           patient_id?: string
-          signal_quality?: number | null
           temperature?: number | null
           timestamp?: string
         }
@@ -228,7 +289,6 @@ export type Database = {
       }
       patients: {
         Row: {
-          address: string | null
           assigned_doctor_id: string | null
           created_at: string | null
           date_of_birth: string | null
@@ -240,7 +300,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          address?: string | null
           assigned_doctor_id?: string | null
           created_at?: string | null
           date_of_birth?: string | null
@@ -252,7 +311,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          address?: string | null
           assigned_doctor_id?: string | null
           created_at?: string | null
           date_of_birth?: string | null
@@ -429,6 +487,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

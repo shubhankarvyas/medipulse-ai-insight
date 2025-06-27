@@ -18,7 +18,13 @@ interface MRIScan {
   file_path: string;
   scan_type: string;
   scan_date: string;
-  ai_analysis_result: Record<string, unknown>;
+  ai_analysis_result: {
+    hf_analysis?: string;
+    hf_confidence?: number;
+    gemini_analysis?: string;
+    comprehensive_report?: string;
+    error?: string;
+  } | null;
   ai_confidence_score: number;
   status: 'pending' | 'analyzed' | 'reviewed';
   created_at: string;
@@ -131,7 +137,7 @@ export const SecureMRIUpload = () => {
       }
 
       // Save scan metadata to database
-      const { error: dbError } = await supabase
+      const { data: scanRecord, error: dbError } = await supabase
         .from('mri_scans')
         .insert({
           patient_id: patientId,
@@ -142,10 +148,70 @@ export const SecureMRIUpload = () => {
           scan_type: scanData.scanType,
           scan_date: scanData.scanDate || null,
           status: 'pending'
-        });
+        })
+        .select()
+        .single();
 
       if (dbError) {
         throw dbError;
+      }
+
+      setUploadProgress(75);
+
+      // Send to FastAPI backend for AI analysis
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('patient_id', patientId || '');
+        formData.append('uploaded_by', user.id);
+
+        const response = await fetch('http://localhost:8000/upload-mri', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Backend analysis failed: ${response.statusText}`);
+        }
+
+        const analysisResult = await response.json();
+        
+        // Update scan record with AI analysis results
+        await supabase
+          .from('mri_scans')
+          .update({
+            ai_analysis_result: {
+              hf_analysis: analysisResult.diagnosis,
+              hf_confidence: analysisResult.confidence,
+              gemini_analysis: analysisResult.gemini_analysis,
+              comprehensive_report: analysisResult.comprehensive_report
+            },
+            ai_confidence_score: analysisResult.confidence,
+            status: 'analyzed'
+          })
+          .eq('id', scanRecord.id);
+
+        toast({
+          title: 'Analysis Complete',
+          description: 'Your MRI scan has been analyzed by AI. Check the results below.',
+        });
+
+      } catch (aiError) {
+        console.error('AI Analysis error:', aiError);
+        // Update status to indicate AI analysis failed but file was uploaded
+        await supabase
+          .from('mri_scans')
+          .update({
+            status: 'pending',
+            ai_analysis_result: { error: `AI analysis failed: ${aiError}` }
+          })
+          .eq('id', scanRecord.id);
+          
+        toast({
+          title: 'Upload Successful, Analysis Pending',
+          description: 'File uploaded but AI analysis encountered an issue. Please try again.',
+          variant: 'destructive'
+        });
       }
 
       setUploadProgress(100);
@@ -366,9 +432,9 @@ export const SecureMRIUpload = () => {
                   </div>
                   
                   {scan.ai_analysis_result && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded border border-blue-200">
-                      <div className="flex items-center text-blue-700 font-medium mb-2">
-                        <Brain className="w-4 h-4 mr-2" />
+                    <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center text-blue-700 font-medium mb-3">
+                        <Brain className="w-5 h-5 mr-2" />
                         AI Analysis Results
                         {scan.ai_confidence_score && (
                           <Badge variant="secondary" className="ml-2">
@@ -376,9 +442,42 @@ export const SecureMRIUpload = () => {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-blue-600">
-                        {JSON.stringify(scan.ai_analysis_result)}
-                      </p>
+                      
+                      {/* Display comprehensive report if available */}
+                      {scan.ai_analysis_result.comprehensive_report ? (
+                        <div className="space-y-3">
+                          <div className="bg-white p-3 rounded border">
+                            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+                              {scan.ai_analysis_result.comprehensive_report}
+                            </pre>
+                          </div>
+                          
+                          {/* Show individual components if available */}
+                          {scan.ai_analysis_result.hf_analysis && (
+                            <div className="bg-green-50 p-3 rounded border border-green-200">
+                              <h4 className="font-medium text-green-700 mb-1">Hugging Face Analysis:</h4>
+                              <p className="text-sm text-green-600">{scan.ai_analysis_result.hf_analysis}</p>
+                            </div>
+                          )}
+                          
+                          {scan.ai_analysis_result.gemini_analysis && (
+                            <div className="bg-purple-50 p-3 rounded border border-purple-200">
+                              <h4 className="font-medium text-purple-700 mb-1">Gemini AI Analysis:</h4>
+                              <p className="text-sm text-purple-600 whitespace-pre-wrap">{scan.ai_analysis_result.gemini_analysis}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : scan.ai_analysis_result.error ? (
+                        <div className="bg-red-50 p-3 rounded border border-red-200">
+                          <p className="text-sm text-red-600">{scan.ai_analysis_result.error}</p>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 p-3 rounded border">
+                          <p className="text-sm text-gray-600">
+                            {JSON.stringify(scan.ai_analysis_result, null, 2)}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

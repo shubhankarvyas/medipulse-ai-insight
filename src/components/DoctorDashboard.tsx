@@ -1,57 +1,204 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Search, AlertTriangle, Activity, Brain, FileText, Plus } from "lucide-react";
+import { Users, Search, AlertTriangle, Activity, Brain, FileText, Plus, Calendar, Heart, Download } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+interface RealPatient {
+  id: string;
+  user_id: string;
+  date_of_birth: string | null;
+  gender: string | null;
+  phone_number: string | null;
+  assigned_doctor_id: string | null;
+  profiles: {
+    full_name: string;
+    email: string;
+  };
+}
+
+interface Appointment {
+  id: string;
+  appointment_date: string;
+  status: string;
+  notes: string | null;
+  patient_notes: string | null;
+  mri_report_shared: boolean;
+  ecg_report_shared: boolean;
+  shared_mri_scans: string[] | null;
+  patients: {
+    profiles: {
+      full_name: string;
+      email: string;
+    };
+  };
+}
+
+interface MRIScan {
+  id: string;
+  file_name: string;
+  scan_date: string | null;
+  ai_analysis_result: unknown;
+  status: string;
+  created_at: string;
+  patients: {
+    profiles: {
+      full_name: string;
+    };
+  };
+}
 
 export const DoctorDashboard = () => {
+  const { user, userProfile } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [realPatients, setRealPatients] = useState<RealPatient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [sharedMRIScans, setSharedMRIScans] = useState<MRIScan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [doctorData, setDoctorData] = useState<{ id: string } | null>(null);
 
-  // Mock patient data
-  const patients = [
-    {
-      id: 1,
-      name: "Sarah Johnson",
-      age: 34,
-      condition: "Hypertension",
-      lastReading: "2 hours ago",
-      status: "stable",
-      heartRate: 78,
-      alerts: 0
-    },
-    {
-      id: 2,
-      name: "Michael Chen",
-      age: 45,
-      condition: "Arrhythmia",
-      lastReading: "15 minutes ago",
-      status: "attention",
-      heartRate: 95,
-      alerts: 2
-    },
-    {
-      id: 3,
-      name: "Emily Rodriguez",
-      age: 28,
-      condition: "Post-surgery monitoring",
-      lastReading: "1 hour ago",
-      status: "stable",
-      heartRate: 72,
-      alerts: 0
-    },
-    {
-      id: 4,
-      name: "David Thompson",
-      age: 52,
-      condition: "Cardiac rehabilitation",
-      lastReading: "30 minutes ago",
-      status: "improving",
-      heartRate: 68,
-      alerts: 1
+  const fetchDoctorData = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      // Get doctor record
+      const { data: doctor, error: doctorError } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (doctorError) throw doctorError;
+      
+      setDoctorData(doctor);
+
+      // Fetch all patients (since we don't have assigned patients yet, show all)
+      const { data: patientsData, error: patientsError } = await supabase
+        .from('patients')
+        .select(`
+          id,
+          user_id,
+          date_of_birth,
+          gender,
+          phone_number,
+          assigned_doctor_id,
+          profiles(full_name, email)
+        `)
+        .not('profiles', 'is', null);
+
+      if (patientsData && !patientsError) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setRealPatients(patientsData as any);
+      }
+
+      // Fetch appointments for this doctor
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: appointmentsData, error: appointmentsError } = await (supabase as any)
+        .from('appointments')
+        .select(`
+          id,
+          appointment_date,
+          status,
+          notes,
+          patient_notes,
+          mri_report_shared,
+          ecg_report_shared,
+          shared_mri_scans,
+          patients(
+            profiles(full_name, email)
+          )
+        `)
+        .eq('doctor_id', doctor.id)
+        .order('appointment_date', { ascending: true });
+
+      if (appointmentsData && !appointmentsError) {
+        setAppointments(appointmentsData);
+      }
+
+      // Fetch MRI scans shared with this doctor through appointments
+      const sharedScanIds: string[] = [];
+      appointmentsData?.forEach((apt: Appointment) => {
+        if (apt.shared_mri_scans) {
+          sharedScanIds.push(...apt.shared_mri_scans);
+        }
+      });
+
+      if (sharedScanIds.length > 0) {
+        const { data: mriData, error: mriError } = await supabase
+          .from('mri_scans')
+          .select(`
+            id,
+            file_name,
+            scan_date,
+            ai_analysis_result,
+            status,
+            created_at,
+            patients(
+              profiles(full_name)
+            )
+          `)
+          .in('id', sharedScanIds);
+
+        if (mriData && !mriError) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setSharedMRIScans(mriData as any);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error fetching doctor data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  }, [user, toast]);
+
+  useEffect(() => {
+    if (userProfile?.role === 'doctor' && user) {
+      fetchDoctorData();
+    }
+  }, [user, userProfile, fetchDoctorData]);
+
+  if (loading) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <Card>
+          <CardContent className="p-6">
+            <div className="animate-pulse space-y-4">
+              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-32 bg-gray-200 rounded"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!userProfile || userProfile.role !== 'doctor') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center text-red-600">
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            Access Denied
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-600">You don't have permission to access the doctor dashboard.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const criticalAlerts = [
     {
@@ -148,8 +295,10 @@ export const DoctorDashboard = () => {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="patients" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="patients">Patient List</TabsTrigger>
+          <TabsTrigger value="appointments">Appointments</TabsTrigger>
+          <TabsTrigger value="reports">Shared Reports</TabsTrigger>
           <TabsTrigger value="alerts">Critical Alerts</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
@@ -170,34 +319,33 @@ export const DoctorDashboard = () => {
 
           {/* Patients Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {patients.map((patient) => (
+            {realPatients.map((patient) => (
               <Card key={patient.id} className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{patient.name}</CardTitle>
-                      <CardDescription>Age: {patient.age} | {patient.condition}</CardDescription>
+                      <CardTitle className="text-lg">{patient.profiles?.full_name || 'Unknown Patient'}</CardTitle>
+                      <CardDescription>
+                        {patient.date_of_birth ? 
+                          `Age: ${new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear()}` : 
+                          'Age: Unknown'
+                        } | {patient.gender || 'Gender not specified'}
+                      </CardDescription>
                     </div>
-                    <Badge className={getStatusColor(patient.status)}>
-                      {patient.status}
+                    <Badge className="bg-green-100 text-green-700 border-green-200">
+                      Active
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Heart Rate:</span>
-                    <span className="font-semibold">{patient.heartRate} BPM</span>
+                    <span className="text-sm text-gray-600">Email:</span>
+                    <span className="text-sm">{patient.profiles?.email || 'Not provided'}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Last Reading:</span>
-                    <span className="text-sm">{patient.lastReading}</span>
+                    <span className="text-sm text-gray-600">Phone:</span>
+                    <span className="text-sm">{patient.phone_number || 'Not provided'}</span>
                   </div>
-                  {patient.alerts > 0 && (
-                    <div className="flex items-center space-x-2 p-2 bg-red-50 rounded-lg">
-                      <AlertTriangle className="w-4 h-4 text-red-500" />
-                      <span className="text-sm text-red-700">{patient.alerts} active alert(s)</span>
-                    </div>
-                  )}
                   <div className="flex space-x-2 pt-2">
                     <Button variant="outline" size="sm" className="flex-1">
                       View Details
@@ -210,6 +358,147 @@ export const DoctorDashboard = () => {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="appointments" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Calendar className="w-5 h-5 mr-2 text-blue-500" />
+                Upcoming Appointments
+              </CardTitle>
+              <CardDescription>Scheduled appointments with patients</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {appointments.length > 0 ? (
+                <div className="space-y-4">
+                  {appointments.map((appointment) => (
+                    <div key={appointment.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{appointment.patients?.profiles?.full_name || 'Unknown Patient'}</h4>
+                          <p className="text-sm text-gray-600">{appointment.patients?.profiles?.email}</p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {new Date(appointment.appointment_date).toLocaleString()}
+                          </p>
+                          {appointment.patient_notes && (
+                            <div className="mt-2 p-2 bg-blue-50 rounded">
+                              <p className="text-sm text-blue-800">
+                                <strong>Patient Notes:</strong> {appointment.patient_notes}
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex space-x-2 mt-2">
+                            {appointment.mri_report_shared && (
+                              <Badge variant="outline" className="text-purple-700 border-purple-300">
+                                MRI Reports Shared
+                              </Badge>
+                            )}
+                            {appointment.ecg_report_shared && (
+                              <Badge variant="outline" className="text-red-700 border-red-300">
+                                ECG Reports Shared
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge className={
+                            appointment.status === 'scheduled' ? 'bg-green-100 text-green-700' :
+                            appointment.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-700'
+                          }>
+                            {appointment.status}
+                          </Badge>
+                          <div className="flex space-x-2 mt-2">
+                            <Button size="sm" variant="outline">
+                              <FileText className="w-4 h-4 mr-1" />
+                              View Details
+                            </Button>
+                            {appointment.status === 'scheduled' && (
+                              <Button size="sm">
+                                Start Consultation
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No appointments scheduled</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-purple-500" />
+                Shared MRI Reports
+              </CardTitle>
+              <CardDescription>MRI scans shared by patients for consultation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sharedMRIScans.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {sharedMRIScans.map((scan) => (
+                    <div key={scan.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{scan.file_name}</h4>
+                          <p className="text-sm text-gray-600">{scan.patients?.profiles?.full_name || 'Unknown Patient'}</p>
+                          <p className="text-sm text-gray-500">
+                            Uploaded: {new Date(scan.created_at).toLocaleDateString()}
+                          </p>
+                          {scan.scan_date && (
+                            <p className="text-sm text-gray-500">
+                              Scan Date: {new Date(scan.scan_date).toLocaleDateString()}
+                            </p>
+                          )}
+                          <Badge className={
+                            scan.status === 'analyzed' ? 'bg-green-100 text-green-700 mt-2' :
+                            scan.status === 'pending' ? 'bg-yellow-100 text-yellow-700 mt-2' :
+                            'bg-blue-100 text-blue-700 mt-2'
+                          }>
+                            {scan.status}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <Button size="sm" variant="outline">
+                            <Brain className="w-4 h-4 mr-1" />
+                            View AI Analysis
+                          </Button>
+                          <Button size="sm">
+                            <Download className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
+                        </div>
+                      </div>
+                      {scan.ai_analysis_result && (
+                        <div className="mt-3 p-3 bg-gray-50 rounded">
+                          <p className="text-sm text-gray-700">
+                            <strong>AI Analysis Available:</strong> Advanced diagnostic insights ready for review
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No shared reports available</p>
+                  <p className="text-sm">Patients will share reports when booking appointments</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="alerts" className="space-y-6">
