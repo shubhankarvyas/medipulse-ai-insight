@@ -6,6 +6,7 @@ supabase
 pydantic
 python-multipart
 reportlab
+Pillow
+google-generativeai
 torch
 transformers
-Pillow

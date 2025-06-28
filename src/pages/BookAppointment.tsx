@@ -70,11 +70,12 @@ export default function BookAppointment() {
         specialization,
         years_of_experience,
         profiles!inner(full_name, email)
-      `)
-      .eq('profiles.role', 'doctor');
+      `);
 
     if (data && !error) {
       setDoctors(data);
+    } else {
+      console.error('Error fetching doctors:', error);
     }
   }, []);
 
@@ -101,13 +102,18 @@ export default function BookAppointment() {
       .eq('user_id', user.id)
       .single();
 
+    console.log('Patient data for MRI fetch:', patientData);
+
     if (patientData) {
       const { data, error } = await supabase
         .from('mri_scans')
         .select('id, file_name, scan_date, ai_analysis_result, status, created_at')
         .eq('patient_id', patientData.id)
-        .eq('status', 'analyzed')
+        // .eq('status', 'analyzed') // Temporarily remove this filter to see all scans
         .order('created_at', { ascending: false });
+
+      console.log('Available MRI scans for patient (all statuses):', data);
+      console.log('MRI scans fetch error:', error);
 
       if (data && !error) {
         setMriScans(data);
@@ -157,6 +163,15 @@ export default function BookAppointment() {
 
     try {
       const appointmentDateTime = new Date(`${appointmentData.appointment_date}T${appointmentData.appointment_time}`);
+      
+      console.log('Booking appointment with data:', {
+        patient_id: patient.id,
+        doctor_id: appointmentData.doctor_id,
+        mri_report_shared: appointmentData.share_mri_reports,
+        ecg_report_shared: appointmentData.share_ecg_reports,
+        shared_mri_scans: appointmentData.selected_mri_scans,
+        selected_scans_length: appointmentData.selected_mri_scans.length
+      });
       
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any)
@@ -328,31 +343,44 @@ export default function BookAppointment() {
               <Label htmlFor="share-mri">Share MRI Reports</Label>
             </div>
 
-            {appointmentData.share_mri_reports && mriScans.length > 0 && (
+            {appointmentData.share_mri_reports && (
               <div className="mt-4 space-y-2">
                 <Label>Select specific MRI scans to share:</Label>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {mriScans.map(scan => (
-                    <div key={scan.id} className="flex items-center space-x-2 p-2 border rounded">
-                      <Checkbox
-                        id={`mri-${scan.id}`}
-                        checked={appointmentData.selected_mri_scans.includes(scan.id)}
-                        onCheckedChange={() => handleMRIScanToggle(scan.id)}
-                      />
-                      <Label htmlFor={`mri-${scan.id}`} className="flex-1">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">{scan.file_name}</span>
-                          <div className="flex space-x-2">
-                            <Badge variant="outline">
-                              {new Date(scan.created_at).toLocaleDateString()}
-                            </Badge>
-                            <Badge variant="secondary">{scan.status}</Badge>
+                {mriScans.length > 0 ? (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {mriScans.map(scan => (
+                      <div key={scan.id} className="flex items-center space-x-2 p-2 border rounded">
+                        <Checkbox
+                          id={`mri-${scan.id}`}
+                          checked={appointmentData.selected_mri_scans.includes(scan.id)}
+                          onCheckedChange={() => handleMRIScanToggle(scan.id)}
+                        />
+                        <Label htmlFor={`mri-${scan.id}`} className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{scan.file_name}</span>
+                            <div className="flex space-x-2">
+                              <Badge variant="outline">
+                                {new Date(scan.created_at).toLocaleDateString()}
+                              </Badge>
+                              <Badge variant="secondary" className={
+                                scan.status === 'analyzed' ? 'bg-green-100 text-green-700' :
+                                scan.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-blue-100 text-blue-700'
+                              }>
+                                {scan.status}
+                              </Badge>
+                            </div>
                           </div>
-                        </div>
-                      </Label>
-                    </div>
-                  ))}
-                </div>
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-gray-500 border rounded">
+                    <p>No MRI scans available to share</p>
+                    <p className="text-sm">Upload MRI scans first to share them with the doctor</p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

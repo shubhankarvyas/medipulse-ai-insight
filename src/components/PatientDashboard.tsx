@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { RealTimeECG } from "@/components/RealTimeECG";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface PatientData {
   id: string;
@@ -82,6 +84,11 @@ export const PatientDashboard = () => {
   // ECG-specific vital signs - in real app, these would come from latest ECG readings
   const ecgMetrics = {
     heartRate: 72,
+    bloodPressure: {
+      systolic: 120,
+      diastolic: 80
+    },
+    oxygenSaturation: 98,
     rrIntervals: 830, // milliseconds
     qrsDuration: 102, // milliseconds
     stSegment: 0.1, // mV
@@ -100,56 +107,149 @@ export const PatientDashboard = () => {
         return;
       }
 
-      // Fetch patient's MRI scans and ECG data
+      // Create PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // Header
+      pdf.setFontSize(24);
+      pdf.setTextColor(41, 128, 185);
+      pdf.text('MediPulse AI - Medical Report', 20, 25);
+      
+      // Patient Info
+      pdf.setFontSize(16);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Patient Information', 20, 45);
+      
+      pdf.setFontSize(12);
+      const patientInfo = [
+        `Name: ${userProfile?.full_name || 'Unknown'}`,
+        `Email: ${userProfile?.email || 'Unknown'}`,
+        `Date of Birth: ${patientData.date_of_birth || 'Not provided'}`,
+        `Gender: ${patientData.gender || 'Not provided'}`,
+        `Phone: ${patientData.phone_number || 'Not provided'}`,
+        `Report Generated: ${new Date().toLocaleString()}`
+      ];
+      
+      let yPosition = 55;
+      patientInfo.forEach(info => {
+        pdf.text(info, 20, yPosition);
+        yPosition += 8;
+      });
+      
+      // ECG Metrics Section
+      yPosition += 10;
+      pdf.setFontSize(16);
+      pdf.setTextColor(220, 53, 69);
+      pdf.text('ECG Metrics', 20, yPosition);
+      
+      yPosition += 10;
+      pdf.setFontSize(12);
+      pdf.setTextColor(0, 0, 0);
+      const ecgInfo = [
+        `Heart Rate: ${ecgMetrics.heartRate} BPM`,
+        `Blood Pressure: ${ecgMetrics.bloodPressure?.systolic || 'N/A'}/${ecgMetrics.bloodPressure?.diastolic || 'N/A'} mmHg`,
+        `SpO2: ${ecgMetrics.oxygenSaturation || 'N/A'}%`,
+        `Heart Rate Variability: ${ecgMetrics.hrv} ms`,
+        `Temperature: ${ecgMetrics.temperature}°F`
+      ];
+      
+      ecgInfo.forEach(info => {
+        pdf.text(info, 20, yPosition);
+        yPosition += 8;
+      });
+      
+      // Fetch and add recent data
       const { data: mriScans } = await supabase
         .from('mri_scans')
         .select('*')
         .eq('patient_id', patientData.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(5);
 
-      // Fetch ECG readings
       const { data: ecgReadings } = await supabase
         .from('ecg_readings')
         .select('*')
         .eq('patient_id', patientData.id)
         .order('created_at', { ascending: false })
-        .limit(10);
-
-      // Create a comprehensive report
-      const reportData = {
-        patient: {
-          name: userProfile?.full_name || 'Unknown',
-          email: userProfile?.email || 'Unknown',
-          dateOfBirth: patientData.date_of_birth,
-          gender: patientData.gender,
-          phoneNumber: patientData.phone_number
-        },
-        reportGenerated: new Date().toISOString(),
-        ecgMetrics: ecgMetrics,
-        recentECGReadings: ecgReadings?.slice(0, 5) || [],
-        mriScans: mriScans || [],
-        summary: {
-          totalMRIScans: mriScans?.length || 0,
-          totalECGReadings: ecgReadings?.length || 0,
-          latestHeartRate: ecgMetrics.heartRate,
-          healthStatus: "Stable"
-        }
-      };
-
-      // Convert to JSON and create downloadable file
-      const dataStr = JSON.stringify(reportData, null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        .limit(5);
       
-      const exportFileDefaultName = `patient-report-${userProfile?.full_name?.replace(/\s+/g, '-') || 'unknown'}-${new Date().toISOString().split('T')[0]}.json`;
+      // MRI Scans Section
+      yPosition += 15;
+      if (yPosition > pageHeight - 30) {
+        pdf.addPage();
+        yPosition = 20;
+      }
       
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
+      pdf.setFontSize(16);
+      pdf.setTextColor(40, 167, 69);
+      pdf.text('Recent MRI Scans', 20, yPosition);
+      
+      yPosition += 10;
+      pdf.setFontSize(12);
+      pdf.setTextColor(0, 0, 0);
+      
+      if (mriScans && mriScans.length > 0) {
+        mriScans.forEach((scan, index) => {
+          if (yPosition > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          pdf.text(`${index + 1}. Scan Date: ${new Date(scan.created_at).toLocaleDateString()}`, 20, yPosition);
+          yPosition += 6;
+          if (scan.ai_analysis_result) {
+            pdf.text(`   Analysis: ${JSON.stringify(scan.ai_analysis_result)}`, 20, yPosition);
+            yPosition += 6;
+          }
+          yPosition += 3;
+        });
+      } else {
+        pdf.text('No MRI scans available', 20, yPosition);
+        yPosition += 8;
+      }
+      
+      // ECG Readings Section
+      yPosition += 10;
+      if (yPosition > pageHeight - 30) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+      
+      pdf.setFontSize(16);
+      pdf.setTextColor(255, 193, 7);
+      pdf.text('Recent ECG Readings', 20, yPosition);
+      
+      yPosition += 10;
+      pdf.setFontSize(12);
+      pdf.setTextColor(0, 0, 0);
+      
+      if (ecgReadings && ecgReadings.length > 0) {
+        ecgReadings.forEach((reading, index) => {
+          if (yPosition > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          pdf.text(`${index + 1}. ${new Date(reading.created_at).toLocaleString()} - Heart Rate: ${reading.heart_rate} BPM`, 20, yPosition);
+          yPosition += 8;
+        });
+      } else {
+        pdf.text('No ECG readings available', 20, yPosition);
+      }
+      
+      // Footer
+      const footerY = pageHeight - 15;
+      pdf.setFontSize(10);
+      pdf.setTextColor(128, 128, 128);
+      pdf.text('Generated by MediPulse AI - Confidential Medical Report', 20, footerY);
+      
+      // Save the PDF
+      const fileName = `medical-report-${userProfile?.full_name?.replace(/\s+/g, '-') || 'patient'}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
 
       toast({
         title: "Report Exported",
-        description: "Your medical report has been downloaded successfully.",
+        description: "Your medical report has been downloaded as a PDF.",
       });
     } catch (error) {
       console.error('Error exporting report:', error);

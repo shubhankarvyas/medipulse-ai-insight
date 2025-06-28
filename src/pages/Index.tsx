@@ -46,7 +46,7 @@ const Index = () => {
       case "doctor":
         return userProfile?.role === 'doctor' ? <DoctorDashboard /> : <div>Access denied</div>;
       case "ai-chat":
-        return <AIChat />;
+        return userProfile?.role === 'patient' ? <AIChat /> : <div>Access denied - AI Assistant is only available for patients</div>;
       case "ecg-monitor":
         return <RealTimeECG />;
       case "mri-upload":
@@ -119,14 +119,16 @@ const Index = () => {
                 </button>
               )}
               
-              <button
-                onClick={() => setActiveView("ai-chat")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeView === "ai-chat" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
-                }`}
-              >
-                AI Assistant
-              </button>
+              {userProfile?.role === 'patient' && (
+                <button
+                  onClick={() => setActiveView("ai-chat")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeView === "ai-chat" ? "text-teal-600 bg-teal-50" : "text-gray-600 hover:text-teal-600"
+                  }`}
+                >
+                  AI Assistant
+                </button>
+              )}
               <button
                 onClick={() => setActiveView("mri-upload")}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
