@@ -1,11 +1,16 @@
-import serial
+#!/usr/bin/env python3
+"""
+ESP32 ECG Data Simulator
+Simulates ECG data for testing without requiring actual hardware
+"""
+
 import requests
 import time
 import json
 import sys
+import random
+import math
 
-SERIAL_PORT = '/dev/cu.SLAB_USBtoUART'  # Change to your port, e.g., COM3 on Windows
-BAUD_RATE = 9600
 BACKEND_URL = 'http://localhost:8000'
 
 # Get patient email from command line or prompt user
@@ -22,7 +27,7 @@ if not PATIENT_EMAIL:
 print(f"Setting up ECG device for {PATIENT_EMAIL}...")
 setup_response = requests.post(f"{BACKEND_URL}/setup-ecg-device", json={
     "patient_email": PATIENT_EMAIL,
-    "device_name": "ESP32 ECG Monitor"
+    "device_name": "ESP32 ECG Monitor (Simulator)"
 })
 
 if setup_response.status_code == 200:
@@ -38,33 +43,31 @@ else:
     print(f"❌ Failed to connect to backend: {setup_response.status_code}")
     exit(1)
 
-ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
-print(f"Listening on {SERIAL_PORT} at {BAUD_RATE} baud...")
+print("📊 Starting ECG simulation...")
+print("Press Ctrl+C to stop")
 
-while True:
-    try:
-        line = ser.readline().decode().strip()
-        if not line:
-            continue
-        # Expecting: heartRate,rrInterval,tempF,qrs,hrv,st
-        parts = line.split(",")
-        if len(parts) != 6:
-            print(f"Malformed line: {line} (expected 6 values, got {len(parts)})")
-            continue
+# Simulation variables
+base_heart_rate = 72
+time_offset = 0
+
+try:
+    while True:
+        # Simulate realistic ECG values
+        time_offset += 1
         
-        heart_rate, rr_interval, temp_f, qrs, hrv, st = parts
+        # Simulate heart rate with some variation (60-85 BPM)
+        heart_rate = base_heart_rate + random.randint(-8, 8)
         
-        # Convert to proper data types
-        try:
-            heart_rate = int(heart_rate) if heart_rate != '0' else 0
-            rr_interval = int(rr_interval) if rr_interval != '0' else 0
-            temp_f = float(temp_f)
-            qrs = int(qrs)
-            hrv = int(hrv)
-            st = float(st)
-        except ValueError as e:
-            print(f"Error converting values: {e}, line: {line}")
-            continue
+        # Calculate RR interval from heart rate (in milliseconds)
+        rr_interval = int(60000 / heart_rate) if heart_rate > 0 else 0
+        
+        # Simulate temperature with small variations (98-99°F)
+        temp_f = 98.6 + random.uniform(-0.5, 0.5)
+        
+        # Simulate other ECG parameters
+        qrs = random.randint(80, 120)  # QRS duration in ms
+        hrv = random.randint(30, 60)   # Heart rate variability
+        st = random.uniform(0.0, 0.2)  # ST segment elevation
         
         payload = {
             "patient_id": PATIENT_ID,
@@ -75,25 +78,20 @@ while True:
             "heart_rate_variability": hrv,
             "st_segment": st
         }
+        
         r = requests.post(f"{BACKEND_URL}/submit-ecg", json=payload)
         if r.status_code == 200:
             response_data = r.json()
             if response_data.get("success"):
-                print(f"✅ Sent ECG data: HR={heart_rate}, Temp={temp_f:.1f}°F")
+                print(f"✅ Sent ECG data: HR={heart_rate} BPM, Temp={temp_f:.1f}°F, RR={rr_interval}ms")
             else:
                 print(f"❌ Backend error: {response_data}")
         else:
             print(f"❌ HTTP error {r.status_code}: {r.text}")
-        time.sleep(0.5)  # Reduced delay for more responsive updates
-    except serial.SerialException as e:
-        print(f"Serial error: {e}")
-        time.sleep(2)
-        try:
-            ser.close()
-            ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
-            print("Reconnected to serial port")
-        except:
-            print("Failed to reconnect to serial port")
-    except Exception as e:
-        print(f"Error: {e}")
-        time.sleep(2)
+        
+        time.sleep(2)  # Send data every 2 seconds
+        
+except KeyboardInterrupt:
+    print("\n🛑 Simulation stopped by user")
+except Exception as e:
+    print(f"❌ Error: {e}")

@@ -69,19 +69,69 @@ app.add_middleware(
 
 class ECGData(BaseModel):
     patient_id: str
-    value: float
-    temp: float
+    heart_rate: int
+    rr_interval: int
+    temperature: float
+    qrs_duration: int
+    heart_rate_variability: int
+    st_segment: float
 
 @app.post("/submit-ecg")
 async def submit_ecg(data: ECGData):
-    # Store ECG data in Supabase
-    resp = supabase_client.table("ecg_readings").insert({
-        "patient_id": data.patient_id,
-        "heart_rate": data.value,
-        "temperature": data.temp,
-        "timestamp": "now()"
-    }).execute()
-    return {"success": True, "data": resp.data}
+    try:
+        # Get the device ID for this patient
+        device_resp = supabase_client.table("ecg_devices").select("id").eq("patient_id", data.patient_id).eq("device_id", "esp32-default-device").single().execute()
+        
+        if not device_resp.data:
+            return {"success": False, "error": "Device not found for patient"}
+        
+        device_uuid = device_resp.data["id"]
+        
+        # Store ECG data in Supabase
+        ecg_data_json = {
+            "heart_rate": data.heart_rate,
+            "rr_interval": data.rr_interval,
+            "qrs_duration": data.qrs_duration,
+            "heart_rate_variability": data.heart_rate_variability,
+            "st_segment": data.st_segment,
+            "raw_value": data.heart_rate
+        }
+        
+        # Detect anomalies based on heart rate and other parameters
+        anomaly_detected = False
+        anomaly_type = None
+        
+        if data.heart_rate < 50 or data.heart_rate > 120:
+            anomaly_detected = True
+            anomaly_type = "Abnormal Heart Rate"
+        elif data.st_segment > 0.1:
+            anomaly_detected = True
+            anomaly_type = "ST Segment Elevation"
+        elif data.heart_rate_variability < 20:
+            anomaly_detected = True
+            anomaly_type = "Low Heart Rate Variability"
+        
+        # Calculate signal quality based on data consistency (normal HR is around 72)
+        base_heart_rate = 72
+        signal_quality = min(100, max(50, 100 - abs(data.heart_rate - base_heart_rate) * 2))
+        
+        resp = supabase_client.table("ecg_readings").insert({
+            "patient_id": data.patient_id,
+            "device_id": device_uuid,
+            "timestamp": "now()",
+            "heart_rate": data.heart_rate,
+            "ecg_data": ecg_data_json,
+            "signal_quality": signal_quality,
+            "battery_level": 85,  # Simulated battery level
+            "temperature": data.temperature,
+            "anomaly_detected": anomaly_detected,
+            "anomaly_type": anomaly_type
+        }).execute()
+        
+        return {"success": True, "data": resp.data}
+    except Exception as e:
+        print(f"Error in submit_ecg: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/ecg-data/{patient_id}")
 async def get_ecg_data(patient_id: str):
@@ -322,6 +372,77 @@ This AI-generated report is intended for educational and research purposes only.
             content={"error": f"Processing failed: {str(e)}", "success": False}
         )
 
+class DeviceSetup(BaseModel):
+    patient_email: str
+    device_name: str = "ESP32 ECG Monitor"
+
+@app.post("/setup-ecg-device")
+async def setup_ecg_device(setup: DeviceSetup):
+    """Setup an ECG device for a patient"""
+    try:
+        # First, get the patient profile from email
+        profile_resp = supabase_client.table("profiles").select("id, role").eq("email", setup.patient_email).single().execute()
+        if not profile_resp.data:
+            return {"error": f"User with email {setup.patient_email} not found. Please make sure the user is registered."}
+        
+        if profile_resp.data["role"] != "patient":
+            return {"error": f"User {setup.patient_email} is not a patient."}
+        
+        user_id = profile_resp.data["id"]
+        
+        # Get or create patient record
+        patient_resp = supabase_client.table("patients").select("id").eq("user_id", user_id).execute()
+        
+        if not patient_resp.data:
+            # Create patient record if it doesn't exist
+            print(f"Creating patient record for {setup.patient_email}")
+            create_patient_resp = supabase_client.table("patients").insert({
+                "user_id": user_id,
+                "date_of_birth": "1990-01-01",  # Default values
+                "gender": "other",
+                "medical_history": "Created automatically for ECG monitoring"
+            }).execute()
+            
+            if not create_patient_resp.data:
+                return {"error": "Failed to create patient record"}
+            
+            patient_id = create_patient_resp.data[0]["id"]
+        else:
+            patient_id = patient_resp.data[0]["id"]
+        
+        # Create or update ECG device
+        # First check if device already exists
+        existing_device = supabase_client.table("ecg_devices").select("id").eq("device_id", "esp32-default-device").eq("patient_id", patient_id).execute()
+        
+        if existing_device.data:
+            # Update existing device
+            device_resp = supabase_client.table("ecg_devices").update({
+                "device_name": setup.device_name,
+                "is_active": True,
+                "last_sync": "now()",
+                "battery_level": 90
+            }).eq("device_id", "esp32-default-device").eq("patient_id", patient_id).execute()
+        else:
+            # Create new device
+            device_resp = supabase_client.table("ecg_devices").insert({
+                "device_id": "esp32-default-device",
+                "patient_id": patient_id,
+                "device_name": setup.device_name,
+                "is_active": True,
+                "last_sync": "now()",
+                "battery_level": 90
+            }).execute()
+        
+        return {
+            "success": True, 
+            "patient_id": patient_id,
+            "device_id": "esp32-default-device",
+            "message": f"Device setup complete for {setup.patient_email}"
+        }
+    except Exception as e:
+        print(f"Error in setup_ecg_device: {e}")
+        return {"error": str(e)}
+
 class ChatRequest(BaseModel):
     prompt: str
     context: str = ""
@@ -345,3 +466,100 @@ async def generate_report(patient_id: str):
 @app.get("/")
 async def root():
     return {"message": "FastAPI backend is running"}
+
+@app.post("/create-demo-patient")
+async def create_demo_patient():
+    """Create a demo patient for testing"""
+    try:
+        # First check if patient exists
+        profile_resp = supabase_client.table("profiles").select("*").eq("email", "patient@demo.com").execute()
+        
+        if profile_resp.data:
+            print("Demo patient profile exists")
+            user_id = profile_resp.data[0]["id"]
+            
+            # Check if patient record exists
+            patient_resp = supabase_client.table("patients").select("*").eq("user_id", user_id).execute()
+            
+            if patient_resp.data:
+                patient_id = patient_resp.data[0]["id"]
+                return {
+                    "success": True,
+                    "message": "Demo patient already exists",
+                    "patient_id": patient_id,
+                    "email": "patient@demo.com"
+                }
+            else:
+                # Create patient record
+                patient_create = supabase_client.table("patients").insert({
+                    "user_id": user_id,
+                    "date_of_birth": "1990-01-01",
+                    "gender": "male"
+                }).execute()
+                
+                if patient_create.data:
+                    patient_id = patient_create.data[0]["id"]
+                    return {
+                        "success": True,
+                        "message": "Demo patient created",
+                        "patient_id": patient_id,
+                        "email": "patient@demo.com"
+                    }
+        
+        return {"success": False, "error": "Demo patient profile not found - run DEMO_USERS.sql first"}
+    
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/list-patients")
+async def list_patients():
+    """List all available patients for debugging"""
+    try:
+        # Get all profiles with patient role
+        profiles_resp = supabase_client.table("profiles").select("id, email, full_name, role").eq("role", "patient").execute()
+        
+        patients_info = []
+        for profile in profiles_resp.data or []:
+            # Get patient record if exists
+            patient_resp = supabase_client.table("patients").select("id").eq("user_id", profile["id"]).execute()
+            patient_id = patient_resp.data[0]["id"] if patient_resp.data else None
+            
+            patients_info.append({
+                "email": profile["email"],
+                "name": profile["full_name"],
+                "user_id": profile["id"],
+                "patient_id": patient_id,
+                "has_patient_record": patient_id is not None
+            })
+        
+        return {"patients": patients_info}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/debug-user/{email}")
+async def debug_user(email: str):
+    """Debug endpoint to check user data"""
+    try:
+        # Get profile
+        profile_resp = supabase_client.table("profiles").select("*").eq("email", email).execute()
+        
+        # Get patient record if exists
+        patient_resp = None
+        if profile_resp.data:
+            user_id = profile_resp.data[0]["id"]
+            patient_resp = supabase_client.table("patients").select("*").eq("user_id", user_id).execute()
+        
+        # Get devices if patient exists
+        devices_resp = None
+        if patient_resp and patient_resp.data:
+            patient_id = patient_resp.data[0]["id"]
+            devices_resp = supabase_client.table("ecg_devices").select("*").eq("patient_id", patient_id).execute()
+        
+        return {
+            "email": email,
+            "profile": profile_resp.data,
+            "patient": patient_resp.data if patient_resp else None,
+            "devices": devices_resp.data if devices_resp else None
+        }
+    except Exception as e:
+        return {"error": str(e)}
