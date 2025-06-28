@@ -115,7 +115,8 @@ async def submit_ecg(data: ECGData):
         base_heart_rate = 72
         signal_quality = min(100, max(50, 100 - abs(data.heart_rate - base_heart_rate) * 2))
         
-        resp = supabase_client.table("ecg_readings").insert({
+        # Insert ECG reading with all required fields
+        insert_data = {
             "patient_id": data.patient_id,
             "device_id": device_uuid,
             "timestamp": "now()",
@@ -126,7 +127,10 @@ async def submit_ecg(data: ECGData):
             "temperature": data.temperature,
             "anomaly_detected": anomaly_detected,
             "anomaly_type": anomaly_type
-        }).execute()
+        }
+        
+        print(f"[DEBUG] Inserting ECG data: {insert_data}")
+        resp = supabase_client.table("ecg_readings").insert(insert_data).execute()
         
         return {"success": True, "data": resp.data}
     except Exception as e:
@@ -135,8 +139,13 @@ async def submit_ecg(data: ECGData):
 
 @app.get("/ecg-data/{patient_id}")
 async def get_ecg_data(patient_id: str):
-    resp = supabase_client.table("ecg_readings").select("*").eq("patient_id", patient_id).order("timestamp", desc=True).limit(100).execute()
-    return {"data": resp.data}
+    try:
+        resp = supabase_client.table("ecg_readings").select("*").eq("patient_id", patient_id).order("timestamp", desc=True).limit(100).execute()
+        print(f"[DEBUG] Retrieved {len(resp.data)} ECG readings for patient {patient_id}")
+        return {"data": resp.data}
+    except Exception as e:
+        print(f"[ERROR] Failed to get ECG data: {e}")
+        return {"data": [], "error": str(e)}
 
 @app.post("/upload-mri")
 async def upload_mri(patient_id: str = Form(...), uploaded_by: str = Form(...), file: UploadFile = File(...)):

@@ -1,24 +1,197 @@
-# Logs
-logs
-*.log
+# Dependencies
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+package-lock.json
+yarn.lock
+bun.lockb
 
-node_modules
-dist
-dist-ssr
-*.local
+# Build outputs
+dist/
+dist-ssr/
+build/
+out/
+.next/
+.nuxt/
+.vercel/
+.netlify/
+
+# Environment variables and secrets
+*.env
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+.env*
+
+# Supabase secrets
+supabase/.env
+supabase/config.toml
+supabase/.branches/
+supabase/.temp/
+
+# Database and credentials
+*.db
+*.sqlite
+*.sqlite3
+database.json
+credentials.json
+service-account.json
+
+# API keys and configuration
+config/secrets.json
+config/production.json
+config/development.json
+.secrets/
+secrets/
+
+# Medical data and uploads (HIPAA compliance)
+uploads/
+medical-data/
+patient-data/
+mri-scans/
+ecg-data/
+*.dcm
+*.dicom
+*.nii
+*.nifti
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+# Cache directories
+.cache/
+.parcel-cache/
+.vite/
+.turbo/
+.nuxt/
+.output/
+.nitro/
 
 # Editor directories and files
-.vscode/*
+.vscode/
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.DS_Store
+Thumbs.db
+
+# Python cache (for server components)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+
+# AI model files and weights
+*.model
+*.weights
+*.h5
+*.pkl
+*.joblib
+models/
+checkpoints/
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env.test
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ESLint cache
+.eslintcache
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Local development
+*.local

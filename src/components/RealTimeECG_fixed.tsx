@@ -6,17 +6,17 @@ import { Activity, Wifi, WifiOff, Battery, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useSharedDemoECGData } from '@/hooks/useSharedDemoECGData';
+import { useDemoECGData } from '@/hooks/useDemoECGData';
 
 interface ECGReading {
   id: string;
   timestamp: string;
   heart_rate: number;
-  ecg_data: Record<string, unknown> | null;
-  signal_quality: number | null;
-  battery_level: number | null;
+  ecg_data: number[] | null;
+  signal_quality: number;
+  battery_level: number;
   temperature: number;
-  anomaly_detected: boolean | null;
+  anomaly_detected: boolean;
   anomaly_type: string | null;
 }
 
@@ -39,10 +39,10 @@ export const RealTimeECG = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [patientId, setPatientId] = useState<string | null>(null);
-  const [useDemo, setUseDemo] = useState(true); // Start with demo mode enabled
+  const [useDemo, setUseDemo] = useState(false);
 
-  // Get shared demo data
-  const demoData = useSharedDemoECGData();
+  // Get demo data as fallback
+  const demoData = useDemoECGData();
 
   // Get patient ID effect
   useEffect(() => {
@@ -93,9 +93,9 @@ export const RealTimeECG = () => {
         .limit(10);
 
       if (!error && data) {
-        setRecentReadings(data as unknown as ECGReading[]);
+        setRecentReadings(data as ECGReading[]);
         if (data.length > 0) {
-          setCurrentReading(data[0] as unknown as ECGReading);
+          setCurrentReading(data[0] as ECGReading);
           setIsConnected(true);
         }
       }
@@ -325,7 +325,7 @@ export const RealTimeECG = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Temperature:</span>
-                  <span className="font-medium">{displayCurrentReading.temperature.toFixed(2)}°F</span>
+                  <span className="font-medium">{displayCurrentReading.temperature}°F</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Timestamp:</span>

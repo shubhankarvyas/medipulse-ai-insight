@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Heart, Activity, TrendingUp, AlertTriangle, Calendar, Download, User } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLatestECGData } from "@/hooks/useLatestECGData";
 import { RealTimeECG } from "@/components/RealTimeECG";
+import { DebugAuth } from "@/components/DebugAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
@@ -29,6 +31,9 @@ export const PatientDashboard = () => {
   const { toast } = useToast();
   const [patientData, setPatientData] = useState<PatientData | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Get real-time ECG data
+  const { latestReading, loading: ecgLoading } = useLatestECGData(patientData?.id || null);
 
   useEffect(() => {
     const fetchPatientData = async () => {
@@ -81,19 +86,24 @@ export const PatientDashboard = () => {
     );
   }
 
-  // ECG-specific vital signs - in real app, these would come from latest ECG readings
+  // ECG metrics from real data or shared demo data
   const ecgMetrics = {
-    heartRate: 72,
+    heartRate: latestReading?.heart_rate || 0,
     bloodPressure: {
       systolic: 120,
       diastolic: 80
     },
     oxygenSaturation: 98,
-    rrIntervals: 830, // milliseconds
-    qrsDuration: 102, // milliseconds
-    stSegment: 0.1, // mV
-    hrv: 45, // RMSSD in ms
-    temperature: 98.6
+    rrIntervals: latestReading?.ecg_data?.rr_interval || 0, // milliseconds
+    qrsDuration: latestReading?.ecg_data?.qrs_duration || 0, // milliseconds
+    stSegment: latestReading?.ecg_data?.st_segment || 0, // mV
+    hrv: latestReading?.ecg_data?.heart_rate_variability || 0, // RMSSD in ms
+    temperature: latestReading?.temperature || 0,
+    signalQuality: latestReading?.signal_quality || 0,
+    batteryLevel: latestReading?.battery_level || 0,
+    anomalyDetected: latestReading?.anomaly_detected || false,
+    anomalyType: latestReading?.anomaly_type || null,
+    lastUpdate: latestReading?.timestamp || null
   };
 
   const handleExportReport = async () => {
@@ -319,18 +329,45 @@ export const PatientDashboard = () => {
       </Card>
 
       {/* ECG Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+      {(ecgLoading || ecgMetrics.heartRate === 0) ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="space-y-0 pb-2">
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-full"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <Card className="bg-gradient-to-br from-red-50 to-pink-50 border-red-100 hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-red-700">Heart Rate</CardTitle>
-            <Heart className="h-4 w-4 text-red-500" />
+            <div className="flex items-center space-x-1">
+              {!ecgLoading && latestReading && (
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Live data" />
+              )}
+              <Heart className="h-4 w-4 text-red-500" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{ecgMetrics.heartRate} BPM</div>
-            <p className="text-xs text-red-600 mt-1">Normal range</p>
+            <p className="text-xs text-red-600 mt-1">
+              {ecgMetrics.anomalyDetected ? ecgMetrics.anomalyType : 'Normal range'}
+            </p>
             <div className="mt-3">
-              <Progress value={75} className="h-2" />
+              <Progress value={Math.min(100, (ecgMetrics.heartRate / 120) * 100)} className="h-2" />
             </div>
+            {latestReading && (
+              <p className="text-xs text-gray-500 mt-1">
+                Updated: {new Date(latestReading.timestamp).toLocaleTimeString()}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -351,14 +388,24 @@ export const PatientDashboard = () => {
         <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-100 hover:shadow-lg transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-green-700">Temperature</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <div className="flex items-center space-x-1">
+              {!ecgLoading && latestReading && (
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Live data" />
+              )}
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{ecgMetrics.temperature}°F</div>
+            <div className="text-2xl font-bold text-green-600">{ecgMetrics.temperature.toFixed(2)}°F</div>
             <p className="text-xs text-green-600 mt-1">Normal</p>
             <div className="mt-3">
-              <Progress value={80} className="h-2" />
+              <Progress value={Math.min(100, ((ecgMetrics.temperature - 95) / 10) * 100)} className="h-2" />
             </div>
+            {latestReading && (
+              <p className="text-xs text-gray-500 mt-1">
+                Signal: {ecgMetrics.signalQuality}%
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -382,7 +429,7 @@ export const PatientDashboard = () => {
             <TrendingUp className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{ecgMetrics.hrv} ms</div>
+            <div className="text-2xl font-bold text-orange-600">{ecgMetrics.hrv.toFixed(2)} ms</div>
             <p className="text-xs text-orange-600 mt-1">Good</p>
             <div className="mt-3">
               <Progress value={85} className="h-2" />
@@ -396,14 +443,15 @@ export const PatientDashboard = () => {
             <Activity className="h-4 w-4 text-teal-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-teal-600">{ecgMetrics.stSegment} mV</div>
+            <div className="text-2xl font-bold text-teal-600">{ecgMetrics.stSegment.toFixed(2)} mV</div>
             <p className="text-xs text-teal-600 mt-1">Elevated trend</p>
             <div className="mt-3">
               <Progress value={60} className="h-2" />
             </div>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      )}
 
       {/* Real-time ECG Component */}
       <RealTimeECG />
